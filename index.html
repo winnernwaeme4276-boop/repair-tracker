@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repair & Warranty Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #printable-tag, #printable-tag * { visibility: visible; }
+      #printable-tag {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        max-width: 320px;
+        margin: 0;
+        padding: 10px;
+        font-family: monospace;
+      }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen p-4 md:p-8">
+
+  <div class="max-w-4xl mx-auto space-y-8 no-print">
+    
+    <!-- Header with Shop Branding -->
+    <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h1 id="header-shop-name" class="text-2xl font-bold text-slate-900">Repair & Warranty Management</h1>
+        <p id="header-shop-address" class="text-sm text-slate-500">Workshop operations, customer tickets, and warranty audit.</p>
+      </div>
+      <div>
+        <button id="btn-open-settings" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 transition">
+          ⚙️ Shop Settings
+        </button>
+      </div>
+    </header>
+
+    <!-- Warranty Verification Section -->
+    <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <h2 class="text-lg font-semibold text-slate-900 mb-1">Warranty Verification</h2>
+      <p class="text-xs text-slate-500 mb-4">Search by Serial Number, IMEI, or Ticket Code to audit coverage.</p>
+      <div class="flex gap-2">
+        <input 
+          id="search-input" 
+          type="text" 
+          placeholder="Enter Serial Number / IMEI / Ticket Code..." 
+          class="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-800"
+        >
+        <button 
+          id="btn-search" 
+          class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition"
+        >
+          Verify
+        </button>
+      </div>
+
+      <div id="search-result" class="mt-4 hidden p-4 rounded-lg border text-sm"></div>
+    </section>
+
+    <!-- Intake Form -->
+    <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <h2 class="text-lg font-semibold text-slate-900 mb-4">Device Intake</h2>
+      
+      <form id="intake-form" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Full Name</label>
+            <input required id="customer-name" type="text" placeholder="e.g., Tunde Adeleke" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-800">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Phone (WhatsApp)</label>
+            <input required id="customer-phone" type="text" placeholder="e.g., 2348012345678" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-800">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Device Type</label>
+            <select id="device-type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="Laptop">Laptop</option>
+              <option value="Phone">Phone</option>
+              <option value="Desktop">Desktop</option>
+              <option value="Tablet">Tablet</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Brand & Model</label>
+            <input required id="brand-model" type="text" placeholder="e.g., ThinkPad X380 / HP 840 G5" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-800">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Serial Number / IMEI</label>
+            <input required id="serial-number" type="text" placeholder="e.g., PF15ABCD" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-800">
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-xs font-semibold text-slate-600">Reported Fault Description</label>
+            <button 
+              id="btn-gemini-diagnose" 
+              type="button" 
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded text-xs font-semibold shadow-sm transition"
+            >
+              <span>✨ Diagnose with Gemini AI</span>
+            </button>
+          </div>
+          <textarea required id="reported-fault" rows="2" placeholder="e.g., Lenovo ThinkPad X380 Yoga broken touch screen, digitizer unresponsive, pen working" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-800"></textarea>
+
+          <!-- Gemini AI Diagnostic Output Card -->
+          <div id="gemini-diagnostic-box" class="mt-2 hidden p-4 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs space-y-2">
+            <div class="flex justify-between items-center border-b border-indigo-100 pb-1.5">
+              <span class="font-bold text-indigo-950 flex items-center gap-1">
+                <span>🤖</span> Gemini Workbench Hardware Diagnosis
+              </span>
+              <button id="btn-close-gemini" type="button" class="text-indigo-400 hover:text-indigo-700 text-sm font-bold">&times;</button>
+            </div>
+            <div id="gemini-content" class="text-indigo-900 leading-relaxed space-y-1.5"></div>
+          </div>
+        </div>
+
+        <!-- Financial Breakdown -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Agreed Cost (₦)</label>
+            <input id="estimated-cost" type="number" placeholder="25000" class="w-full border border-slate-300 rounded px-3 py-1.5 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Deposit Paid (₦)</label>
+            <input id="deposit-paid" type="number" placeholder="10000" class="w-full border border-slate-300 rounded px-3 py-1.5 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Balance Due (₦)</label>
+            <input id="balance-due" type="number" readonly class="w-full border border-slate-200 bg-slate-100 rounded px-3 py-1.5 text-sm font-bold text-slate-800">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Warranty (Days)</label>
+            <input id="warranty-days" type="number" value="30" class="w-full border border-slate-300 rounded px-3 py-1.5 text-sm">
+          </div>
+        </div>
+
+        <button 
+          id="btn-submit" 
+          type="submit" 
+          class="w-full bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-lg text-sm font-semibold transition"
+        >
+          Register Intake & Generate Receipt
+        </button>
+      </form>
+
+      <!-- Success Action Box -->
+      <div id="receipt-modal" class="mt-6 hidden p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-center space-y-3">
+        <h3 class="text-base font-semibold text-emerald-800">Device Successfully Registered!</h3>
+        <p class="text-sm text-slate-600">Ticket Code: <span id="display-ticket-code" class="font-mono font-bold text-slate-900"></span></p>
+        <div class="flex flex-wrap justify-center gap-3 pt-1">
+          <a 
+            id="btn-whatsapp" 
+            href="#" 
+            target="_blank" 
+            class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition"
+          >
+            Send WhatsApp Receipt
+          </a>
+          <button 
+            id="btn-print-tag" 
+            class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-sm font-medium transition"
+          >
+            Print Device Tag
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Workshop Queue -->
+    <section class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h2 class="text-lg font-semibold text-slate-900">Workshop Queue</h2>
+          <p class="text-xs text-slate-500">Live ticket stages and balance audit.</p>
+        </div>
+        <button id="btn-refresh" class="text-xs font-medium text-slate-600 hover:text-slate-900 underline">Refresh Queue</button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-slate-200 text-xs text-slate-500 uppercase">
+              <th class="py-2.5 px-3">Ticket</th>
+              <th class="py-2.5 px-3">Customer</th>
+              <th class="py-2.5 px-3">Device & Fault</th>
+              <th class="py-2.5 px-3">Balance Due</th>
+              <th class="py-2.5 px-3">Status</th>
+              <th class="py-2.5 px-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="tickets-table-body" class="divide-y divide-slate-100">
+            <tr>
+              <td colspan="6" class="py-4 text-center text-slate-400">Loading tickets...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
+      <h3 class="text-lg font-bold text-slate-900">Shop Profile Settings</h3>
+      <p class="text-xs text-slate-500">These details will appear on thermal tags and WhatsApp receipts.</p>
+      
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Shop / Business Name</label>
+        <input id="setting-shop-name" type="text" placeholder="e.g., Apex Laptop Clinic" class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Plaza Address / Shop Number</label>
+        <input id="setting-shop-address" type="text" placeholder="e.g., Shop B12, Banex Plaza, Wuse 2" class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Official Support Phone</label>
+        <input id="setting-shop-phone" type="text" placeholder="e.g., 08012345678" class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="btn-close-settings" class="px-4 py-2 border rounded text-xs text-slate-600">Cancel</button>
+        <button id="btn-save-settings" class="px-4 py-2 bg-slate-900 text-white rounded text-xs font-semibold">Save Profile</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Thermal Label Layout -->
+  <div id="printable-tag" class="hidden">
+    <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px;">
+      <h3 style="font-size: 14px; font-weight: bold; margin: 0;" id="print-shop-name">REPAIR TAG</h3>
+      <p style="font-size: 10px; margin: 0;" id="print-shop-address"></p>
+      <p style="font-size: 10px; margin: 0;" id="print-date"></p>
+    </div>
+    <div style="font-size: 12px; line-height: 1.4;">
+      <p style="font-size: 16px; font-weight: bold; margin: 4px 0; text-align: center;" id="print-ticket"></p>
+      <p><strong>Customer:</strong> <span id="print-customer"></span></p>
+      <p><strong>Phone:</strong> <span id="print-phone"></span></p>
+      <p><strong>Device:</strong> <span id="print-device"></span></p>
+      <p><strong>Serial:</strong> <span id="print-serial"></span></p>
+      <p><strong>Fault:</strong> <span id="print-fault"></span></p>
+      <p><strong>Agreed:</strong> ₦<span id="print-cost"></span></p>
+      <p><strong>Deposit:</strong> ₦<span id="print-deposit"></span></p>
+      <p style="font-size: 13px; font-weight: bold;"><strong>Balance Due:</strong> ₦<span id="print-balance"></span></p>
+    </div>
+    <div style="border-top: 1px dashed #000; margin-top: 6px; padding-top: 4px; text-align: center; font-size: 9px; line-height: 1.2;">
+      NOTICE: Devices uncollected after 30 days of completion may be auctioned to recover servicing costs. No warranty on liquid/screen damage.
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
