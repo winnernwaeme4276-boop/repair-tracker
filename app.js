@@ -5,7 +5,6 @@ const GEMINI_API_KEY = "AQ.Ab8RN6KU6zB-pgqlvMKAA-mDCo45p4nZnmxWXIGcEcU1tGW7AA";
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// State cache to prevent HTML injection errors
 let currentQueue = [];
 let currentPrintData = null;
 
@@ -24,7 +23,7 @@ function updateShopHeader() {
   document.getElementById('header-shop-address').innerText = settings.address;
 }
 
-// Balance Auto-calculation
+// Financial calculations
 const inputCost = document.getElementById('estimated-cost');
 const inputDeposit = document.getElementById('deposit-paid');
 const inputBalance = document.getElementById('balance-due');
@@ -37,47 +36,69 @@ function calculateBalance() {
 inputCost.addEventListener('input', calculateBalance);
 inputDeposit.addEventListener('input', calculateBalance);
 
-// 1. Load Workshop Queue
+// 1. Load Queue & Calculate Dashboard Metrics
 async function loadTickets() {
   const tbody = document.getElementById('tickets-table-body');
-  tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">Loading tickets...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">Loading workshop tickets...</td></tr>`;
 
   const { data, error } = await db
     .from('repairs')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(25);
+    .limit(30);
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-rose-500">Error loading queue.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-rose-400">Error loading queue. Check network.</td></tr>`;
     return;
   }
 
   currentQueue = data || [];
 
+  // Update top metrics
+  let activeCount = 0;
+  let readyCount = 0;
+  let totalDeposits = 0;
+  let totalBalances = 0;
+
+  currentQueue.forEach(t => {
+    if (t.status !== 'Collected') {
+      activeCount++;
+      totalBalances += (Number(t.balance_due) || 0);
+    }
+    if (t.status === 'Ready') {
+      readyCount++;
+    }
+    totalDeposits += (Number(t.deposit_paid) || 0);
+  });
+
+  document.getElementById('metric-active').innerText = activeCount;
+  document.getElementById('metric-ready').innerText = readyCount;
+  document.getElementById('metric-deposits').innerText = `₦${totalDeposits.toLocaleString()}`;
+  document.getElementById('metric-balances').innerText = `₦${totalBalances.toLocaleString()}`;
+
   if (currentQueue.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-400">No active tickets registered.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">No active tickets registered.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = currentQueue.map(ticket => `
-    <tr class="hover:bg-slate-50 transition">
-      <td class="py-2.5 px-3 font-mono font-bold text-xs text-slate-900">${ticket.ticket_code || 'N/A'}</td>
-      <td class="py-2.5 px-3">
-        <span class="font-medium text-slate-800">${ticket.customer_name || 'N/A'}</span>
-        <br><span class="text-xs text-slate-400">${ticket.customer_phone || ''}</span>
+    <tr class="hover:bg-slate-900/40 transition">
+      <td class="py-3 px-3 font-mono font-bold text-xs text-indigo-400">${ticket.ticket_code || 'N/A'}</td>
+      <td class="py-3 px-3">
+        <span class="font-medium text-slate-100">${ticket.customer_name || 'N/A'}</span>
+        <br><span class="text-xs text-slate-500 font-mono">${ticket.customer_phone || ''}</span>
       </td>
-      <td class="py-2.5 px-3">
-        <span class="font-medium text-slate-800">${ticket.brand_model || 'N/A'}</span>
-        <br><span class="text-xs text-slate-500 truncate max-w-xs block">${ticket.reported_fault || ''}</span>
+      <td class="py-3 px-3">
+        <span class="font-medium text-slate-200">${ticket.brand_model || 'N/A'}</span>
+        <br><span class="text-xs text-slate-400 truncate max-w-xs block">${ticket.reported_fault || ''}</span>
       </td>
-      <td class="py-2.5 px-3 font-semibold text-slate-800">
+      <td class="py-3 px-3 font-mono font-semibold text-slate-200">
         ₦${Number(ticket.balance_due ?? ticket.estimated_price ?? 0).toLocaleString()}
       </td>
-      <td class="py-2.5 px-3">
+      <td class="py-3 px-3">
         <select 
           onchange="updateTicketStatus('${ticket.id}', this.value)" 
-          class="text-xs border rounded px-2 py-1 bg-white font-medium ${getStatusColor(ticket.status)}"
+          class="text-xs rounded-lg px-2.5 py-1 font-semibold focus:outline-none transition ${getStatusStyle(ticket.status)}"
         >
           <option value="Received" ${ticket.status === 'Received' ? 'selected' : ''}>Received</option>
           <option value="In Progress" ${ticket.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
@@ -86,10 +107,10 @@ async function loadTickets() {
           <option value="Collected" ${ticket.status === 'Collected' ? 'selected' : ''}>Collected</option>
         </select>
       </td>
-      <td class="py-2.5 px-3 text-right">
+      <td class="py-3 px-3 text-right">
         <button 
           onclick="triggerPrintById('${ticket.id}')"
-          class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded border border-slate-300"
+          class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700/80 font-semibold transition"
         >
           Tag
         </button>
@@ -98,25 +119,25 @@ async function loadTickets() {
   `).join('');
 }
 
-function getStatusColor(status) {
+function getStatusStyle(status) {
   switch (status) {
-    case 'Received': return 'text-slate-700 border-slate-300';
-    case 'In Progress': return 'text-blue-700 border-blue-300 bg-blue-50';
-    case 'Awaiting Parts': return 'text-amber-700 border-amber-300 bg-amber-50';
-    case 'Ready': return 'text-purple-700 border-purple-300 bg-purple-50 font-bold';
-    case 'Collected': return 'text-emerald-700 border-emerald-300 bg-emerald-50';
-    default: return 'text-slate-700';
+    case 'Received': return 'bg-slate-800 text-slate-300 border border-slate-700';
+    case 'In Progress': return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+    case 'Awaiting Parts': return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+    case 'Ready': return 'bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold';
+    case 'Collected': return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+    default: return 'bg-slate-800 text-slate-300 border border-slate-700';
   }
 }
 
-// 2. Status Updates & One-Click "Ready for Pickup" Alert
+// 2. Status Progression & Automated Customer Alert
 window.updateTicketStatus = async function(id, newStatus) {
   const ticket = currentQueue.find(t => t.id === id);
   const updatePayload = { status: newStatus };
 
   if (newStatus === 'Collected') {
     updatePayload.collected_at = new Date().toISOString();
-    updatePayload.balance_due = 0; // Balance cleared upon final collection
+    updatePayload.balance_due = 0;
   }
 
   const { error } = await db.from('repairs').update(updatePayload).eq('id', id);
@@ -126,20 +147,21 @@ window.updateTicketStatus = async function(id, newStatus) {
     return;
   }
 
-  // Ready for pickup trigger
   if (newStatus === 'Ready' && ticket) {
     const settings = getShopSettings();
     const cleanPhone = (ticket.customer_phone || '').replace(/[^0-9]/g, '');
     const balance = ticket.balance_due ?? 0;
+    const trackingUrl = `${window.location.origin}/?track=${ticket.ticket_code}`;
     
-    const message = `*REPAIR READY FOR PICKUP*\n\n` +
+    const message = `*${settings.name.toUpperCase()} - DEVICE READY*\n\n` +
       `Hello *${ticket.customer_name}*,\n` +
-      `Good news! Your *${ticket.brand_model}* (Ticket: ${ticket.ticket_code}) is fully repaired and tested.\n\n` +
+      `Your *${ticket.brand_model}* (Ticket: ${ticket.ticket_code}) is fully repaired, tested, and ready for pickup!\n\n` +
       `*Balance Due:* ₦${Number(balance).toLocaleString()}\n` +
-      `*Location:* ${settings.address}\n\n` +
-      `Please collect within workshop hours. Thank you for choosing *${settings.name}*!`;
+      `*Track Live / View Details:* ${trackingUrl}\n` +
+      `*Workshop Address:* ${settings.address}\n\n` +
+      `Thank you for trusting our workshop!`;
 
-    const sendAlert = confirm(`Device marked READY. Would you like to send a WhatsApp pickup notification to ${ticket.customer_name}?`);
+    const sendAlert = confirm(`Device marked READY. Send automated WhatsApp pickup alert to ${ticket.customer_name}?`);
     if (sendAlert && cleanPhone) {
       window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
     }
@@ -148,7 +170,7 @@ window.updateTicketStatus = async function(id, newStatus) {
   loadTickets();
 };
 
-// 3. New Intake Submission
+// 3. New Ticket Intake
 document.getElementById('intake-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('btn-submit');
@@ -160,21 +182,14 @@ document.getElementById('intake-form').addEventListener('submit', async (e) => {
   const deposit = parseFloat(inputDeposit.value) || 0;
   const balance = Math.max(0, cost - deposit);
 
-  const customerName = document.getElementById('customer-name').value.trim();
-  const customerPhone = document.getElementById('customer-phone').value.trim();
-  const deviceType = document.getElementById('device-type').value;
-  const brandModel = document.getElementById('brand-model').value.trim();
-  const serialNumber = document.getElementById('serial-number').value.trim();
-  const reportedFault = document.getElementById('reported-fault').value.trim();
-
   const payload = {
     ticket_code: ticketCode,
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    device_type: deviceType,
-    brand_model: brandModel,
-    serial_number: serialNumber,
-    reported_fault: reportedFault,
+    customer_name: document.getElementById('customer-name').value.trim(),
+    customer_phone: document.getElementById('customer-phone').value.trim(),
+    device_type: document.getElementById('device-type').value,
+    brand_model: document.getElementById('brand-model').value.trim(),
+    serial_number: document.getElementById('serial-number').value.trim(),
+    reported_fault: document.getElementById('reported-fault').value.trim(),
     estimated_price: cost,
     deposit_paid: deposit,
     balance_due: balance,
@@ -194,18 +209,20 @@ document.getElementById('intake-form').addEventListener('submit', async (e) => {
   currentPrintData = payload;
   const settings = getShopSettings();
   const cleanPhone = payload.customer_phone.replace(/[^0-9]/g, '');
+  const trackingUrl = `${window.location.origin}/?track=${ticketCode}`;
 
-  const message = `*${settings.name.toUpperCase()} - REPAIR INTAKE*\n\n` +
+  const message = `*${settings.name.toUpperCase()} - REPAIR INTAKE RECEIPT*\n\n` +
     `Hello *${payload.customer_name}*,\nYour device has been booked in.\n\n` +
     `*Ticket Code:* ${ticketCode}\n` +
     `*Device:* ${payload.brand_model}\n` +
     `*Serial/IMEI:* ${payload.serial_number}\n` +
-    `*Fault Logged:* ${payload.reported_fault}\n` +
+    `*Reported Fault:* ${payload.reported_fault}\n` +
     `*Agreed Cost:* ₦${cost.toLocaleString()}\n` +
     `*Deposit Paid:* ₦${deposit.toLocaleString()}\n` +
     `*Balance Due:* ₦${balance.toLocaleString()}\n` +
-    `*Warranty:* ${payload.warranty_days} Days (starts on collection)\n\n` +
-    `_Notice: Devices not collected within 30 days after repair completion may be disposed of to recover service costs._`;
+    `*Warranty:* ${payload.warranty_days} Days (starts on pickup)\n\n` +
+    `*Check Live Status Anytime:* ${trackingUrl}\n\n` +
+    `_Notice: Devices uncollected after 30 days of completion may be auctioned to recover costs._`;
 
   document.getElementById('display-ticket-code').innerText = ticketCode;
   document.getElementById('btn-whatsapp').href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
@@ -219,7 +236,7 @@ document.getElementById('intake-form').addEventListener('submit', async (e) => {
   loadTickets();
 });
 
-// 4. Print Tag Formatting
+// 4. Print Tag Logic
 window.triggerPrintById = function(id) {
   const ticket = currentQueue.find(t => t.id === id);
   if (ticket) printSlip(ticket);
@@ -257,7 +274,7 @@ document.getElementById('btn-search').addEventListener('click', async () => {
   if (!query) return;
 
   searchResult.classList.remove('hidden');
-  searchResult.className = "mt-4 p-4 rounded-lg border text-sm bg-slate-50 border-slate-200 text-slate-600";
+  searchResult.className = "mt-3 p-4 rounded-xl border text-sm bg-slate-900 border-slate-800 text-slate-300";
   searchResult.innerHTML = "Auditing records...";
 
   const { data, error } = await db
@@ -268,8 +285,8 @@ document.getElementById('btn-search').addEventListener('click', async () => {
     .limit(1);
 
   if (error || !data || data.length === 0) {
-    searchResult.className = "mt-4 p-4 rounded-lg border text-sm bg-rose-50 border-rose-200 text-rose-700";
-    searchResult.innerHTML = `<strong>Record Not Found:</strong> No repair history matches "${query}".`;
+    searchResult.className = "mt-3 p-4 rounded-xl border text-sm bg-rose-950/40 border-rose-500/30 text-rose-300";
+    searchResult.innerHTML = `<strong>No Records Found:</strong> No history matches "${query}".`;
     return;
   }
 
@@ -277,13 +294,13 @@ document.getElementById('btn-search').addEventListener('click', async () => {
   const warrantyDays = record.warranty_days || 30;
 
   if (!record.collected_at) {
-    searchResult.className = "mt-4 p-4 rounded-lg border text-sm bg-amber-50 border-amber-300 text-amber-900";
+    searchResult.className = "mt-3 p-4 rounded-xl border text-sm bg-amber-950/40 border-amber-500/30 text-amber-200";
     searchResult.innerHTML = `
       <div class="space-y-1">
-        <p class="font-bold text-base">${record.brand_model}</p>
-        <p class="text-xs">Ticket: <span class="font-mono font-bold">${record.ticket_code}</span> | Serial: <span class="font-mono">${record.serial_number}</span></p>
+        <p class="font-bold text-base text-amber-100">${record.brand_model}</p>
+        <p class="text-xs">Ticket: <span class="font-mono text-white">${record.ticket_code}</span> | Serial: <span class="font-mono text-white">${record.serial_number}</span></p>
         <p class="text-xs">Current Workshop Status: <strong>${record.status}</strong></p>
-        <p class="text-xs font-semibold text-amber-800 pt-1">Warranty inactive: Device has not been collected yet.</p>
+        <p class="text-xs font-semibold text-amber-400 pt-1">Warranty inactive: Device has not been collected yet.</p>
       </div>
     `;
     return;
@@ -293,55 +310,26 @@ document.getElementById('btn-search').addEventListener('click', async () => {
   const expiryDate = new Date(collectionDate.getTime() + warrantyDays * 24 * 60 * 60 * 1000);
   const isWarrantyValid = new Date() <= expiryDate;
 
-  searchResult.className = `mt-4 p-4 rounded-lg border text-sm ${isWarrantyValid ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-rose-50 border-rose-300 text-rose-900'}`;
+  searchResult.className = `mt-3 p-4 rounded-xl border text-sm ${isWarrantyValid ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-200' : 'bg-rose-950/40 border-rose-500/30 text-rose-300'}`;
   searchResult.innerHTML = `
-    <div class="flex justify-between items-start">
+    <div class="flex flex-col sm:flex-row justify-between items-start gap-2">
       <div class="space-y-1">
-        <p class="font-bold text-base">${record.brand_model}</p>
+        <p class="font-bold text-base text-white">${record.brand_model}</p>
         <p class="text-xs">Customer: ${record.customer_name} (${record.customer_phone})</p>
-        <p class="text-xs">Ticket: <span class="font-mono font-bold">${record.ticket_code}</span> | Serial: <span class="font-mono">${record.serial_number}</span></p>
-        <p class="text-xs">Collected: ${collectionDate.toLocaleDateString()} | Expires: ${expiryDate.toLocaleDateString()}</p>
+        <p class="text-xs font-mono">Ticket: ${record.ticket_code} | Serial: ${record.serial_number}</p>
+        <p class="text-xs">Collected: ${collectionDate.toLocaleDateString()} | Policy Expiry: ${expiryDate.toLocaleDateString()}</p>
       </div>
-      <div class="text-right">
-        <span class="inline-block px-3 py-1 rounded text-xs font-bold uppercase tracking-wider ${isWarrantyValid ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+      <div class="text-left sm:text-right">
+        <span class="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isWarrantyValid ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}">
           ${isWarrantyValid ? 'Warranty Active' : 'Warranty Expired'}
         </span>
-        <p class="text-xs mt-1 text-slate-500">${warrantyDays}-Day Term</p>
+        <p class="text-xs mt-1 text-slate-400">${warrantyDays}-Day Term</p>
       </div>
     </div>
   `;
 });
 
-// 6. Settings Modal Handlers
-const settingsModal = document.getElementById('settings-modal');
-document.getElementById('btn-open-settings').addEventListener('click', () => {
-  const current = getShopSettings();
-  document.getElementById('setting-shop-name').value = current.name === 'Workshop Operations' ? '' : current.name;
-  document.getElementById('setting-shop-address').value = current.address.includes('Workshop operations') ? '' : current.address;
-  document.getElementById('setting-shop-phone').value = current.phone;
-  settingsModal.classList.remove('hidden');
-});
-
-document.getElementById('btn-close-settings').addEventListener('click', () => {
-  settingsModal.classList.add('hidden');
-});
-
-document.getElementById('btn-save-settings').addEventListener('click', () => {
-  const name = document.getElementById('setting-shop-name').value.trim() || 'Workshop Operations';
-  const address = document.getElementById('setting-shop-address').value.trim() || 'Workshop operations, customer tickets, and warranty audit.';
-  const phone = document.getElementById('setting-shop-phone').value.trim();
-
-  localStorage.setItem('rt_shop_name', name);
-  localStorage.setItem('rt_shop_address', address);
-  localStorage.setItem('rt_shop_phone', phone);
-
-  updateShopHeader();
-  settingsModal.classList.add('hidden');
-});
-
-document.getElementById('btn-refresh').addEventListener('click', loadTickets);
-
-// 7. Google AI Studio - Gemini Hardware Diagnostics
+// 6. Gemini Diagnostic Assistant
 const btnGeminiDiagnose = document.getElementById('btn-gemini-diagnose');
 const geminiBox = document.getElementById('gemini-diagnostic-box');
 const geminiContent = document.getElementById('gemini-content');
@@ -359,7 +347,7 @@ if (btnGeminiDiagnose) {
     }
 
     geminiBox.classList.remove('hidden');
-    geminiContent.innerHTML = `<span class="animate-pulse text-indigo-600 font-medium">Running Gemini diagnostic analysis for ${brandModel || deviceType}...</span>`;
+    geminiContent.innerHTML = `<span class="animate-pulse text-indigo-400 font-medium">Running Gemini diagnostic analysis for ${brandModel || deviceType}...</span>`;
     btnGeminiDiagnose.disabled = true;
 
     const prompt = `You are an elite electronics and computer repair technician workbench assistant.
@@ -371,42 +359,34 @@ Provide a concise, practical bench diagnosis in under 120 words with 3 sections:
 2. Bench Test Steps (what multimeter test, voltage check, or isolation step to run first)
 3. Estimated Repair Difficulty & Parts Needed`;
 
+    const primaryModel = 'gemini-3.8-flash';
+    const fallbackModel = 'gemini-3.6-flash';
+
+    async function requestDiagnosis(model) {
+      return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+    }
+
     try {
-      // Reliable endpoint with automated fallback
-      const primaryModel = 'gemini-3.8-flash';
-      const fallbackModel = 'gemini-3.6-flash';
-
-      async function requestDiagnosis(model) {
-        return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        });
-      }
-
       let response = await requestDiagnosis(primaryModel);
       if (!response.ok) {
-        // If high demand/rate-limited, fallback immediately
         response = await requestDiagnosis(fallbackModel);
       }
 
       const result = await response.json();
-      
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
+      if (result.error) throw new Error(result.error.message);
 
       const diagnosisText = result.candidates?.[0]?.content?.parts?.[0]?.text || "No diagnosis generated.";
-      // Format simple line breaks and bold tags
-      const formattedHtml = diagnosisText
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      geminiContent.innerHTML = diagnosisText
+        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
         .replace(/\n/g, '<br>');
-
-      geminiContent.innerHTML = formattedHtml;
     } catch (err) {
-      geminiContent.innerHTML = `<span class="text-rose-600">Diagnosis error: ${err.message}</span>`;
+      geminiContent.innerHTML = `<span class="text-rose-400">Diagnosis error: ${err.message}</span>`;
     } finally {
       btnGeminiDiagnose.disabled = false;
     }
@@ -417,6 +397,70 @@ Provide a concise, practical bench diagnosis in under 120 words with 3 sections:
   });
 }
 
+// 7. Customer Live Tracking Link (?track=REP-xxxx)
+async function handlePublicTracking() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const trackCode = urlParams.get('track');
+  if (!trackCode) return;
+
+  const trackView = document.getElementById('customer-tracker-view');
+  const trackTitle = document.getElementById('tracker-device-title');
+  const trackBadge = document.getElementById('tracker-status-badge');
+  const trackContent = document.getElementById('tracker-content');
+
+  trackView.classList.remove('hidden');
+  trackView.scrollIntoView({ behavior: 'smooth' });
+
+  const { data } = await db.from('repairs').select('*').eq('ticket_code', trackCode).single();
+
+  if (!data) {
+    trackTitle.innerText = "Ticket Not Found";
+    trackBadge.innerText = "Error";
+    trackContent.innerHTML = `<p class="text-rose-400">No repair ticket matches <strong>${trackCode}</strong>.</p>`;
+    return;
+  }
+
+  trackTitle.innerText = data.brand_model;
+  trackBadge.innerText = data.status;
+  trackBadge.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${getStatusStyle(data.status)}`;
+  trackContent.innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
+      <div><strong>Reported Fault:</strong> ${data.reported_fault}</div>
+      <div><strong>Balance Due:</strong> ₦${Number(data.balance_due || 0).toLocaleString()}</div>
+      <div><strong>Intake Date:</strong> ${new Date(data.created_at).toLocaleDateString()}</div>
+      <div><strong>Warranty Period:</strong> ${data.warranty_days} days after collection</div>
+    </div>
+  `;
+}
+
+// 8. Settings Modal Handlers
+const settingsModal = document.getElementById('settings-modal');
+document.getElementById('btn-open-settings').addEventListener('click', () => {
+  const current = getShopSettings();
+  document.getElementById('setting-shop-name').value = current.name === 'Workshop Operations' ? '' : current.name;
+  document.getElementById('setting-shop-address').value = current.address.includes('Workshop operations') ? '' : current.address;
+  document.getElementById('setting-shop-phone').value = current.phone;
+  settingsModal.classList.remove('hidden');
+});
+
+document.getElementById('btn-close-settings').addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+document.getElementById('btn-save-settings').addEventListener('click', () => {
+  const name = document.getElementById('setting-shop-name').value.trim() || 'Workshop Operations';
+  const address = document.getElementById('setting-shop-address').value.trim() || 'Workshop operations, customer tickets, and warranty audit.';
+  const phone = document.getElementById('setting-shop-phone').value.trim();
+
+  localStorage.setItem('rt_shop_name', name);
+  localStorage.setItem('rt_shop_address', address);
+  localStorage.setItem('rt_shop_phone', phone);
+
+  updateShopHeader();
+  settingsModal.classList.add('hidden');
+});
+
+document.getElementById('btn-refresh').addEventListener('click', loadTickets);
+
 // Init
 updateShopHeader();
 loadTickets();
+handlePublicTracking();
