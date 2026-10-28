@@ -6,6 +6,8 @@
   <title>Repair & Warranty Tracker Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Fast, zero-dependency QR Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -55,6 +57,9 @@
         </div>
       </div>
       <div class="flex items-center gap-2 self-start sm:self-center">
+        <button id="btn-export-csv" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-xs font-semibold text-slate-200 transition shadow-sm hover:border-slate-600">
+          <span>📊</span> Export CSV
+        </button>
         <button id="btn-open-settings" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-xs font-semibold text-slate-200 transition shadow-sm hover:border-slate-600">
           <span>⚙️</span> Shop Settings
         </button>
@@ -247,16 +252,24 @@
       </div>
     </section>
 
-    <!-- Workshop Queue Table -->
+    <!-- Workshop Queue Table & Filters -->
     <section class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl shadow-2xl space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-800/80 pb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
         <div>
           <h2 class="text-base font-bold text-white flex items-center gap-2">
             <span>🛠️</span> Workshop Queue
           </h2>
-          <p class="text-xs text-slate-400 mt-0.5">Live repair progress and balance tracking.</p>
+          <p class="text-xs text-slate-400 mt-0.5">Filter by workshop stage or balance collection status.</p>
         </div>
-        <button id="btn-refresh" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition">↻ Refresh Queue</button>
+        <button id="btn-refresh" class="self-start sm:self-center text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition">↻ Refresh Queue</button>
+      </div>
+
+      <!-- Queue Filter Pills -->
+      <div class="flex flex-wrap gap-2 pt-1 pb-2">
+        <button onclick="setFilter('All')" id="filter-All" class="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition">All (<span id="count-all">0</span>)</button>
+        <button onclick="setFilter('Active')" id="filter-Active" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800/80 text-slate-300 hover:bg-slate-700/80 border border-slate-700/60 transition">In Workshop (<span id="count-active">0</span>)</button>
+        <button onclick="setFilter('Ready')" id="filter-Ready" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800/80 text-amber-300 hover:bg-slate-700/80 border border-slate-700/60 transition">Ready for Pickup (<span id="count-ready">0</span>)</button>
+        <button onclick="setFilter('Collected')" id="filter-Collected" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800/80 text-emerald-400 hover:bg-slate-700/80 border border-slate-700/60 transition">Collected (<span id="count-collected">0</span>)</button>
       </div>
 
       <div class="overflow-x-auto">
@@ -308,7 +321,7 @@
     </div>
   </div>
 
-  <!-- Thermal Label Layout for 58mm/80mm Printers -->
+  <!-- Thermal Label Layout for 58mm/80mm Printers (With QR Code) -->
   <div id="printable-tag" class="hidden">
     <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px;">
       <h3 style="font-size: 14px; font-weight: bold; margin: 0;" id="print-shop-name">REPAIR TAG</h3>
@@ -326,6 +339,13 @@
       <p><strong>Deposit:</strong> ₦<span id="print-deposit"></span></p>
       <p style="font-size: 13px; font-weight: bold;"><strong>Balance Due:</strong> ₦<span id="print-balance"></span></p>
     </div>
+
+    <!-- Centered Thermal QR Code Container -->
+    <div style="text-align: center; margin-top: 8px; margin-bottom: 4px;">
+      <div id="qrcode-container" style="display: inline-block; padding: 4px; background: #fff;"></div>
+      <p style="font-size: 9px; margin: 2px 0 0 0;">Scan to track live repair status</p>
+    </div>
+
     <div style="border-top: 1px dashed #000; margin-top: 6px; padding-top: 4px; text-align: center; font-size: 9px; line-height: 1.2;">
       NOTICE: Devices uncollected after 30 days of completion may be auctioned to recover servicing costs. No warranty on liquid/screen damage.
     </div>

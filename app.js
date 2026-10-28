@@ -7,6 +7,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentQueue = [];
 let currentPrintData = null;
+let activeFilter = 'All';
 
 // Settings handling (localStorage)
 function getShopSettings() {
@@ -36,52 +37,38 @@ function calculateBalance() {
 inputCost.addEventListener('input', calculateBalance);
 inputDeposit.addEventListener('input', calculateBalance);
 
-// 1. Load Queue & Calculate Dashboard Metrics
-async function loadTickets() {
-  const tbody = document.getElementById('tickets-table-body');
-  tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">Loading workshop tickets...</td></tr>`;
-
-  const { data, error } = await db
-    .from('repairs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(30);
-
-  if (error) {
-    tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-rose-400">Error loading queue. Check network.</td></tr>`;
-    return;
-  }
-
-  currentQueue = data || [];
-
-  // Update top metrics
-  let activeCount = 0;
-  let readyCount = 0;
-  let totalDeposits = 0;
-  let totalBalances = 0;
-
-  currentQueue.forEach(t => {
-    if (t.status !== 'Collected') {
-      activeCount++;
-      totalBalances += (Number(t.balance_due) || 0);
+// 1. Filter Handlers
+window.setFilter = function(filterName) {
+  activeFilter = filterName;
+  ['All', 'Active', 'Ready', 'Collected'].forEach(f => {
+    const el = document.getElementById(`filter-${f}`);
+    if (f === filterName) {
+      el.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition';
+    } else {
+      el.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800/80 text-slate-300 hover:bg-slate-700/80 border border-slate-700/60 transition';
     }
-    if (t.status === 'Ready') {
-      readyCount++;
-    }
-    totalDeposits += (Number(t.deposit_paid) || 0);
   });
+  renderQueueTable();
+};
 
-  document.getElementById('metric-active').innerText = activeCount;
-  document.getElementById('metric-ready').innerText = readyCount;
-  document.getElementById('metric-deposits').innerText = `₦${totalDeposits.toLocaleString()}`;
-  document.getElementById('metric-balances').innerText = `₦${totalBalances.toLocaleString()}`;
+function renderQueueTable() {
+  const tbody = document.getElementById('tickets-table-body');
+  
+  let filtered = currentQueue;
+  if (activeFilter === 'Active') {
+    filtered = currentQueue.filter(t => t.status !== 'Collected');
+  } else if (activeFilter === 'Ready') {
+    filtered = currentQueue.filter(t => t.status === 'Ready');
+  } else if (activeFilter === 'Collected') {
+    filtered = currentQueue.filter(t => t.status === 'Collected');
+  }
 
-  if (currentQueue.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">No active tickets registered.</td></tr>`;
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">No tickets match this filter.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = currentQueue.map(ticket => `
+  tbody.innerHTML = filtered.map(ticket => `
     <tr class="hover:bg-slate-900/40 transition">
       <td class="py-3 px-3 font-mono font-bold text-xs text-indigo-400">${ticket.ticket_code || 'N/A'}</td>
       <td class="py-3 px-3">
@@ -119,6 +106,56 @@ async function loadTickets() {
   `).join('');
 }
 
+// 2. Load Tickets & Refresh Metrics
+async function loadTickets() {
+  const tbody = document.getElementById('tickets-table-body');
+  tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">Loading workshop tickets...</td></tr>`;
+
+  const { data, error } = await db
+    .from('repairs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-rose-400">Error loading queue. Check network.</td></tr>`;
+    return;
+  }
+
+  currentQueue = data || [];
+
+  let activeCount = 0;
+  let readyCount = 0;
+  let collectedCount = 0;
+  let totalDeposits = 0;
+  let totalBalances = 0;
+
+  currentQueue.forEach(t => {
+    if (t.status !== 'Collected') {
+      activeCount++;
+      totalBalances += (Number(t.balance_due) || 0);
+    } else {
+      collectedCount++;
+    }
+    if (t.status === 'Ready') {
+      readyCount++;
+    }
+    totalDeposits += (Number(t.deposit_paid) || 0);
+  });
+
+  document.getElementById('metric-active').innerText = activeCount;
+  document.getElementById('metric-ready').innerText = readyCount;
+  document.getElementById('metric-deposits').innerText = `₦${totalDeposits.toLocaleString()}`;
+  document.getElementById('metric-balances').innerText = `₦${totalBalances.toLocaleString()}`;
+
+  document.getElementById('count-all').innerText = currentQueue.length;
+  document.getElementById('count-active').innerText = activeCount;
+  document.getElementById('count-ready').innerText = readyCount;
+  document.getElementById('count-collected').innerText = collectedCount;
+
+  renderQueueTable();
+}
+
 function getStatusStyle(status) {
   switch (status) {
     case 'Received': return 'bg-slate-800 text-slate-300 border border-slate-700';
@@ -130,7 +167,7 @@ function getStatusStyle(status) {
   }
 }
 
-// 2. Status Progression & Automated Customer Alert
+// 3. Status Progression
 window.updateTicketStatus = async function(id, newStatus) {
   const ticket = currentQueue.find(t => t.id === id);
   const updatePayload = { status: newStatus };
@@ -170,7 +207,7 @@ window.updateTicketStatus = async function(id, newStatus) {
   loadTickets();
 };
 
-// 3. New Ticket Intake
+// 4. Ticket Intake
 document.getElementById('intake-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('btn-submit');
@@ -236,7 +273,7 @@ document.getElementById('intake-form').addEventListener('submit', async (e) => {
   loadTickets();
 });
 
-// 4. Print Tag Logic
+// 5. Thermal Slip Printing with QR Code Generation
 window.triggerPrintById = function(id) {
   const ticket = currentQueue.find(t => t.id === id);
   if (ticket) printSlip(ticket);
@@ -261,13 +298,63 @@ function printSlip(data) {
   document.getElementById('print-deposit').innerText = Number(data.deposit_paid || 0).toLocaleString();
   document.getElementById('print-balance').innerText = Number(data.balance_due || 0).toLocaleString();
 
+  // Generate QR Code dynamically
+  const qrContainer = document.getElementById('qrcode-container');
+  qrContainer.innerHTML = '';
+  const trackingUrl = `${window.location.origin}/?track=${data.ticket_code}`;
+  
+  if (window.QRCode) {
+    new QRCode(qrContainer, {
+      text: trackingUrl,
+      width: 88,
+      height: 88,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+
   const tag = document.getElementById('printable-tag');
   tag.classList.remove('hidden');
-  window.print();
-  tag.classList.add('hidden');
+  setTimeout(() => {
+    window.print();
+    tag.classList.add('hidden');
+  }, 250);
 }
 
-// 5. Warranty Audit
+// 6. CSV Earnings & Tickets Export
+document.getElementById('btn-export-csv').addEventListener('click', () => {
+  if (!currentQueue || currentQueue.length === 0) {
+    alert("No tickets available to export.");
+    return;
+  }
+
+  const headers = ["Ticket Code", "Date", "Customer Name", "Phone", "Device", "Serial/IMEI", "Fault", "Cost", "Deposit", "Balance Due", "Status"];
+  const rows = currentQueue.map(t => [
+    `"${t.ticket_code || ''}"`,
+    `"${new Date(t.created_at).toLocaleDateString()}"`,
+    `"${(t.customer_name || '').replace(/"/g, '""')}"`,
+    `"${t.customer_phone || ''}"`,
+    `"${(t.brand_model || '').replace(/"/g, '""')}"`,
+    `"${t.serial_number || ''}"`,
+    `"${(t.reported_fault || '').replace(/"/g, '""')}"`,
+    t.estimated_price || 0,
+    t.deposit_paid || 0,
+    t.balance_due || 0,
+    `"${t.status || ''}"`
+  ]);
+
+  const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `workshop_report_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+});
+
+// 7. Warranty Verification
 document.getElementById('btn-search').addEventListener('click', async () => {
   const query = document.getElementById('search-input').value.trim();
   const searchResult = document.getElementById('search-result');
@@ -329,7 +416,7 @@ document.getElementById('btn-search').addEventListener('click', async () => {
   `;
 });
 
-// 6. Gemini Diagnostic Assistant
+// 8. Gemini Diagnostic Assistant
 const btnGeminiDiagnose = document.getElementById('btn-gemini-diagnose');
 const geminiBox = document.getElementById('gemini-diagnostic-box');
 const geminiContent = document.getElementById('gemini-content');
@@ -397,7 +484,7 @@ Provide a concise, practical bench diagnosis in under 120 words with 3 sections:
   });
 }
 
-// 7. Customer Live Tracking Link (?track=REP-xxxx)
+// 9. Customer Live Tracking Link (?track=REP-xxxx)
 async function handlePublicTracking() {
   const urlParams = new URLSearchParams(window.location.search);
   const trackCode = urlParams.get('track');
@@ -433,7 +520,7 @@ async function handlePublicTracking() {
   `;
 }
 
-// 8. Settings Modal Handlers
+// 10. Settings Modal Handlers
 const settingsModal = document.getElementById('settings-modal');
 document.getElementById('btn-open-settings').addEventListener('click', () => {
   const current = getShopSettings();
