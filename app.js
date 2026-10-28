@@ -11,7 +11,14 @@ let activeFilter = 'All';
 
 // Settings handling (localStorage)
 function getShopSettings() {
+  let shopId = localStorage.getItem('rt_shop_id');
+  if (!shopId) {
+    // Default initial shop ID for your demo records
+    shopId = 'demo';
+    localStorage.setItem('rt_shop_id', shopId);
+  }
   return {
+    shopId: shopId,
     name: localStorage.getItem('rt_shop_name') || 'Workshop Operations',
     address: localStorage.getItem('rt_shop_address') || 'Workshop operations, customer tickets, and warranty audit.',
     phone: localStorage.getItem('rt_shop_phone') || ''
@@ -111,9 +118,11 @@ async function loadTickets() {
   const tbody = document.getElementById('tickets-table-body');
   tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-500 font-medium">Loading workshop tickets...</td></tr>`;
 
+  const settings = getShopSettings();
   const { data, error } = await db
     .from('repairs')
     .select('*')
+    .eq('shop_id', settings.shopId)
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -219,7 +228,9 @@ document.getElementById('intake-form').addEventListener('submit', async (e) => {
   const deposit = parseFloat(inputDeposit.value) || 0;
   const balance = Math.max(0, cost - deposit);
 
+  const settings = getShopSettings();
   const payload = {
+    shop_id: settings.shopId,
     ticket_code: ticketCode,
     customer_name: document.getElementById('customer-name').value.trim(),
     customer_phone: document.getElementById('customer-phone').value.trim(),
@@ -524,25 +535,34 @@ async function handlePublicTracking() {
 const settingsModal = document.getElementById('settings-modal');
 document.getElementById('btn-open-settings').addEventListener('click', () => {
   const current = getShopSettings();
+  document.getElementById('setting-shop-id').value = current.shopId;
   document.getElementById('setting-shop-name').value = current.name === 'Workshop Operations' ? '' : current.name;
   document.getElementById('setting-shop-address').value = current.address.includes('Workshop operations') ? '' : current.address;
   document.getElementById('setting-shop-phone').value = current.phone;
   settingsModal.classList.remove('hidden');
 });
 
+document.getElementById('btn-generate-shopid').addEventListener('click', () => {
+  const rand = 'shop_' + Math.random().toString(36).substring(2, 8);
+  document.getElementById('setting-shop-id').value = rand;
+});
+
 document.getElementById('btn-close-settings').addEventListener('click', () => settingsModal.classList.add('hidden'));
 
 document.getElementById('btn-save-settings').addEventListener('click', () => {
+  const shopId = document.getElementById('setting-shop-id').value.trim().toLowerCase() || 'demo';
   const name = document.getElementById('setting-shop-name').value.trim() || 'Workshop Operations';
   const address = document.getElementById('setting-shop-address').value.trim() || 'Workshop operations, customer tickets, and warranty audit.';
   const phone = document.getElementById('setting-shop-phone').value.trim();
 
+  localStorage.setItem('rt_shop_id', shopId);
   localStorage.setItem('rt_shop_name', name);
   localStorage.setItem('rt_shop_address', address);
   localStorage.setItem('rt_shop_phone', phone);
 
   updateShopHeader();
   settingsModal.classList.add('hidden');
+  loadTickets();
 });
 
 document.getElementById('btn-refresh').addEventListener('click', loadTickets);
